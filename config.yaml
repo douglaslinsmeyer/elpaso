@@ -1,0 +1,14 @@
+qdrant:
+  collection_name: el_paso
+
+embedding:
+  model: nomic-embed-text
+
+llm:
+  model: qwen3:30b-a3b
+
+chunking:
+  chunk_size: 512
+
+retrieval:
+  top_k: 5

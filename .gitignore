@@ -1,0 +1,22 @@
+# Environment
+.env
+.venv/
+venv/
+
+# Qdrant data
+qdrant_storage/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

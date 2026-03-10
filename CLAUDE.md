@@ -10,7 +10,9 @@ The target environment is a manufacturing-focused microservices org built on C#/
 
 ## Current State
 
-This project is in early development (Phase 0). The roadmap lives in `docs/ElPaso_Roadmap.md`. Most directories and scripts referenced below are **planned structure** — verify files exist before running commands.
+Phase 0 (Foundation & Infrastructure) is **in progress**. The project skeleton, docker-compose, config files, and smoke test are in place. Qdrant requires Docker Desktop WSL integration (not yet enabled). Ollama is running locally.
+
+The roadmap lives in `docs/ElPaso_Roadmap.md`.
 
 ## Technology Stack
 
@@ -20,7 +22,7 @@ This project is in early development (Phase 0). The roadmap lives in `docs/ElPas
 - **LlamaIndex** for RAG orchestration
 - **Tree-sitter** for C#/Java/TypeScript/Python code parsing
 - **Python MCP SDK** for the MCP server
-- **Embedding**: nomic-embed-text or mxbai-embed-large via Ollama
+- **Embedding**: nomic-embed-text via Ollama
 
 ## Architecture (Four Layers)
 
@@ -78,7 +80,7 @@ pytest -k "test_name"         # Run a specific test by name
 ## Configuration
 
 - API credentials and endpoints go in `config.yaml` / `.env` (never commit secrets)
-- Qdrant collection naming strategy should be defined in Phase 0
+- Qdrant collection name: `el_paso` (defined in `config.yaml`)
 - Target GitHub repos are filtered to 20 POC repositories
 
 ## Project Phases
