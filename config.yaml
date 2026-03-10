@@ -14,6 +14,14 @@ confluence:
 github:
   repo_prefix: "mes-"
   issue_lookback_months: 12
+  code_extensions:
+    - ".cs"
+  skip_patterns:
+    - "**/obj/**"
+    - "**/bin/**"
+    - "*.Designer.cs"
+    - "*.AssemblyInfo.cs"
+    - "**/Migrations/**"
 
 chunking:
   chunk_size: 512
