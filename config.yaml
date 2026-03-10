@@ -7,8 +7,13 @@ embedding:
 llm:
   model: qwen3:30b-a3b
 
+confluence:
+  spaces:
+    - ISS
+
 chunking:
   chunk_size: 512
+  chunk_overlap: 50
 
 retrieval:
   top_k: 5
