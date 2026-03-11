@@ -3,7 +3,7 @@
 import uuid
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import Distance, FieldCondition, Filter, MatchAny, PointStruct, VectorParams
 
 
 class VectorStore:
@@ -51,12 +51,25 @@ class VectorStore:
         return len(points)
 
     def search(
-        self, query_vector: list[float], top_k: int = 5
+        self, query_vector: list[float], top_k: int = 5,
+        source_types: list[str] | None = None,
     ) -> list[dict]:
-        """Search for similar vectors, returning payloads with scores."""
+        """Search for similar vectors, optionally filtered by source_type."""
+        query_filter = None
+        if source_types:
+            query_filter = Filter(
+                must=[
+                    FieldCondition(
+                        key="source_type",
+                        match=MatchAny(any=source_types),
+                    )
+                ]
+            )
+
         results = self.client.query_points(
             collection_name=self.collection_name,
             query=query_vector,
+            query_filter=query_filter,
             limit=top_k,
         )
         return [

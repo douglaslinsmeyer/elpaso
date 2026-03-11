@@ -9,4 +9,5 @@ beautifulsoup4==4.13.4
 PyGithub==2.6.0
 tree-sitter==0.25.2
 tree-sitter-c-sharp==0.23.1
+mcp==1.26.0
 pytest==8.3.5

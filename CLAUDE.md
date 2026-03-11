@@ -10,7 +10,7 @@ The target environment is a manufacturing-focused microservices org built on C#/
 
 ## Current State
 
-Phase 0 (Foundation & Infrastructure) is **in progress**. The project skeleton, docker-compose, config files, and smoke test are in place. Qdrant requires Docker Desktop WSL integration (not yet enabled). Ollama is running locally.
+Phases 0–4 are **complete**. The full pipeline is operational: Confluence + GitHub docs/issues/PRs + C# source code ingested into Qdrant, with an MCP server exposing `ask_el_paso(question, scope?)` for AI-powered Q&A with source citations. Phase 5 (hardening/tuning) is next.
 
 The roadmap lives in `docs/ElPaso_Roadmap.md`.
 
