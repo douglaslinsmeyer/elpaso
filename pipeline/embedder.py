@@ -53,3 +53,8 @@ class Embedder:
 
         # Fallback: embed one at a time
         return [self.embed(text) for text in texts]
+
+    def vector_size(self) -> int:
+        """Return the embedding dimension by probing the model with a short string."""
+        probe = self.embed("dimension probe")
+        return len(probe)

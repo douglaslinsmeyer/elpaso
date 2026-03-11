@@ -48,6 +48,8 @@ def main():
     store = VectorStore(collection_name=collection_name, host=qdrant_host, port=qdrant_port)
     tracker = IngestionTracker()
 
+    store.ensure_collection(vector_size=embedder.vector_size())
+
     total_pages = 0
     total_chunks = 0
     skipped = 0
@@ -78,9 +80,6 @@ def main():
 
                 texts = [chunk.text for chunk in chunks]
                 vectors = embedder.embed_batch(texts)
-
-                if total_chunks == 0 and skipped == 0:
-                    store.ensure_collection(vector_size=len(vectors[0]))
 
                 payloads = [
                     {

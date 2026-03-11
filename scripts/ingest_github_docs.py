@@ -52,7 +52,6 @@ def ingest_docs(connector, embedder, store, tracker, chunk_size, chunk_overlap):
 
             texts = [chunk.text for chunk in chunks]
             vectors = embedder.embed_batch(texts)
-            store.ensure_collection(vector_size=len(vectors[0]))
 
             payloads = [
                 {
@@ -120,7 +119,6 @@ def ingest_issues_and_prs(connector, embedder, store, tracker, chunk_size, chunk
 
             texts = [chunk.text for chunk in chunks]
             vectors = embedder.embed_batch(texts)
-            store.ensure_collection(vector_size=len(vectors[0]))
 
             payloads = [
                 {
@@ -179,6 +177,8 @@ def main():
     embedder = Embedder(model=embed_model, ollama_url=ollama_url)
     store = VectorStore(collection_name=collection_name, host=qdrant_host, port=qdrant_port)
     tracker = IngestionTracker()
+
+    store.ensure_collection(vector_size=embedder.vector_size())
 
     doc_chunks, doc_skipped, doc_errors = ingest_docs(
         docs_connector, embedder, store, tracker, chunk_size, chunk_overlap

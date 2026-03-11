@@ -20,7 +20,7 @@ Built for a manufacturing-focused microservices environment (C#/.NET, RabbitMQ, 
 ## Tech Stack
 
 - **Python 3.11+**
-- **Ollama** with Qwen3 (30B-A3B MoE) for LLM inference
+- **Ollama** with Qwen3 8B for LLM inference
 - **Qdrant** (Docker) for vector storage
 - **LlamaIndex** for RAG orchestration
 - **Tree-sitter** for C#/Java/TypeScript/Python code parsing
@@ -46,7 +46,7 @@ python smoke_test.py
 python scripts/ingest_confluence.py     # Confluence pages
 python scripts/ingest_github_docs.py    # GitHub READMEs, issues, PRs
 python scripts/ingest_github_code.py    # GitHub source code (Tree-sitter)
-python scripts/run_weekly_ingest.py     # All sources
+python scripts/rebuild_collection.py   # Drop & re-ingest all sources
 ```
 
 ## MCP Server
@@ -59,7 +59,7 @@ Exposes `ask_el_paso(question, scope?)` to any MCP-compatible AI host (Claude, C
 
 ## Roadmap
 
-See [`docs/ElPaso_Roadmap.md`](docs/ElPaso_Roadmap.md) for the full roadmap. Currently in **Phase 0**.
+See [`docs/ElPaso_Roadmap.md`](docs/ElPaso_Roadmap.md) for the full roadmap. Phases 0–4 complete, currently in **Phase 5**.
 
 | Phase | Title |
 |-------|-------|

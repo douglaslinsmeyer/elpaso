@@ -5,7 +5,7 @@ embedding:
   model: nomic-embed-text
 
 llm:
-  model: qwen3:30b-a3b
+  model: qwen3:8b
 
 confluence:
   spaces:

@@ -33,8 +33,8 @@ def get_logger(name: str, log_dir: str = "logs") -> logging.Logger:
 
     logger.setLevel(logging.DEBUG)
 
-    # Console handler — human-readable
-    console = logging.StreamHandler(sys.stdout)
+    # Console handler — human-readable (stderr to avoid MCP stdio conflicts)
+    console = logging.StreamHandler(sys.stderr)
     console.setLevel(logging.INFO)
     console.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(console)

@@ -50,6 +50,8 @@ def main():
     store = VectorStore(collection_name=collection_name, host=qdrant_host, port=qdrant_port)
     tracker = IngestionTracker()
 
+    store.ensure_collection(vector_size=embedder.vector_size())
+
     logger.info("Fetching source files from GitHub...")
     files = connector.fetch_code()
     logger.info(f"Found {len(files)} source files across matching repos")
@@ -57,7 +59,6 @@ def main():
     total_chunks = 0
     skipped = 0
     errors = 0
-    collection_ready = False
     current_ids = set()
 
     for code_file in files:
@@ -83,10 +84,6 @@ def main():
 
             texts = [chunk.text for chunk in chunks]
             vectors = embedder.embed_batch(texts)
-
-            if not collection_ready:
-                store.ensure_collection(vector_size=len(vectors[0]))
-                collection_ready = True
 
             payloads = [
                 {
