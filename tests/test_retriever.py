@@ -149,17 +149,140 @@ class TestRetriever:
         mock_embedder_cls.return_value = mock_embedder
 
         mock_store = MagicMock()
-        mock_store.search.return_value = []
+        mock_store.hybrid_search.return_value = []
         mock_store_cls.return_value = mock_store
 
         from mcp_server.retriever import Retriever
         retriever = Retriever()
         retriever.ask("show me code", scope="code")
 
+        # Code scope defaults to hybrid search mode
+        mock_store.hybrid_search.assert_called_once()
+        call_kwargs = mock_store.hybrid_search.call_args.kwargs
+        assert call_kwargs["source_types"] == ["github_code"]
+        assert call_kwargs["repo_name"] == ""
+        assert call_kwargs["space_key"] == ""
+
+    @patch("mcp_server.retriever.VectorStore")
+    @patch("mcp_server.retriever.Embedder")
+    @patch("mcp_server.retriever.yaml.safe_load")
+    @patch("builtins.open", create=True)
+    def test_search_returns_raw_chunks(self, mock_open, mock_yaml, mock_embedder_cls, mock_store_cls):
+        mock_yaml.return_value = {
+            "embedding": {"model": "nomic-embed-text"},
+            "llm": {"model": "qwen3:30b-a3b"},
+            "qdrant": {"collection_name": "el_paso"},
+            "retrieval": {"top_k": 5},
+        }
+
+        mock_embedder = MagicMock()
+        mock_embedder.embed.return_value = [0.1] * 768
+        mock_embedder_cls.return_value = mock_embedder
+
+        chunks = [
+            {"source_type": "github_code", "text": "public void Ship() {}", "score": 0.92, "repo_name": "mes-shipping"},
+            {"source_type": "confluence", "text": "Shipping overview", "score": 0.85, "page_url": "https://example.com"},
+        ]
+        mock_store = MagicMock()
+        mock_store.search.return_value = chunks
+        mock_store_cls.return_value = mock_store
+
+        from mcp_server.retriever import Retriever
+        retriever = Retriever()
+        results = retriever.search("shipping", top_k=5)
+
+        assert len(results) == 2
+        assert results[0]["score"] == 0.92
+        assert results[0]["source_type"] == "github_code"
+        assert results[1]["text"] == "Shipping overview"
+
+    @patch("mcp_server.retriever.VectorStore")
+    @patch("mcp_server.retriever.Embedder")
+    @patch("mcp_server.retriever.yaml.safe_load")
+    @patch("builtins.open", create=True)
+    def test_search_respects_top_k_override(self, mock_open, mock_yaml, mock_embedder_cls, mock_store_cls):
+        mock_yaml.return_value = {
+            "embedding": {"model": "nomic-embed-text"},
+            "llm": {"model": "qwen3:30b-a3b"},
+            "qdrant": {"collection_name": "el_paso"},
+            "retrieval": {"top_k": 5},
+        }
+
+        mock_embedder = MagicMock()
+        mock_embedder.embed.return_value = [0.1] * 768
+        mock_embedder_cls.return_value = mock_embedder
+
+        mock_store = MagicMock()
+        mock_store.search.return_value = []
+        mock_store_cls.return_value = mock_store
+
+        from mcp_server.retriever import Retriever
+        retriever = Retriever()
+        retriever.search("test", top_k=3)
+
         mock_store.search.assert_called_once_with(
             mock_embedder.embed.return_value,
-            top_k=9,
-            source_types=["github_code"],
+            top_k=7,  # 3 + 4 extra for dedup
+            source_types=None,
             repo_name="",
             space_key="",
         )
+
+    @patch("mcp_server.retriever.VectorStore")
+    @patch("mcp_server.retriever.Embedder")
+    @patch("mcp_server.retriever.yaml.safe_load")
+    @patch("builtins.open", create=True)
+    def test_scope_docs_excludes_issues(self, mock_open, mock_yaml, mock_embedder_cls, mock_store_cls):
+        mock_yaml.return_value = {
+            "embedding": {"model": "nomic-embed-text"},
+            "llm": {"model": "qwen3:30b-a3b"},
+            "qdrant": {"collection_name": "el_paso"},
+            "retrieval": {"top_k": 5},
+        }
+
+        mock_embedder = MagicMock()
+        mock_embedder.embed.return_value = [0.1] * 768
+        mock_embedder_cls.return_value = mock_embedder
+
+        mock_store = MagicMock()
+        mock_store.search.return_value = []
+        mock_store_cls.return_value = mock_store
+
+        from mcp_server.retriever import Retriever
+        retriever = Retriever()
+        retriever.search("docs query", scope="docs")
+
+        call_args = mock_store.search.call_args
+        source_types = call_args.kwargs.get("source_types") or call_args[1].get("source_types")
+        assert "github_issue" not in source_types
+        assert "github_pr" not in source_types
+        assert "confluence" in source_types
+        assert "github_docs" in source_types
+
+    @patch("mcp_server.retriever.VectorStore")
+    @patch("mcp_server.retriever.Embedder")
+    @patch("mcp_server.retriever.yaml.safe_load")
+    @patch("builtins.open", create=True)
+    def test_scope_issues_filters_correctly(self, mock_open, mock_yaml, mock_embedder_cls, mock_store_cls):
+        mock_yaml.return_value = {
+            "embedding": {"model": "nomic-embed-text"},
+            "llm": {"model": "qwen3:30b-a3b"},
+            "qdrant": {"collection_name": "el_paso"},
+            "retrieval": {"top_k": 5},
+        }
+
+        mock_embedder = MagicMock()
+        mock_embedder.embed.return_value = [0.1] * 768
+        mock_embedder_cls.return_value = mock_embedder
+
+        mock_store = MagicMock()
+        mock_store.search.return_value = []
+        mock_store_cls.return_value = mock_store
+
+        from mcp_server.retriever import Retriever
+        retriever = Retriever()
+        retriever.search("bug query", scope="issues")
+
+        call_args = mock_store.search.call_args
+        source_types = call_args.kwargs.get("source_types") or call_args[1].get("source_types")
+        assert source_types == ["github_issue", "github_pr"]

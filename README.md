@@ -7,72 +7,235 @@ Built for a manufacturing-focused microservices environment (C#/.NET, RabbitMQ, 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────┐     ┌──────────────┐
-│  Ingestion Layer│────▶│ Processing Layer  │────▶│ Retrieval & Synth.  │────▶│  MCP Server  │
-│  (connectors/)  │     │  (pipeline/)      │     │                     │     │(mcp_server/) │
-│                 │     │                   │     │                     │     │              │
-│ Confluence      │     │ Chunking          │     │ Semantic search     │     │ ask_el_paso()│
-│ GitHub docs     │     │ Embedding (Ollama)│     │ LLM synthesis       │     │              │
-│ GitHub code     │     │ Qdrant storage    │     │ Source attribution   │     │              │
-└─────────────────┘     └──────────────────┘     └─────────────────────┘     └──────────────┘
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────┐     ┌──────────────────┐
+│  Ingestion Layer│────▶│ Processing Layer  │────▶│ Retrieval & Synth.  │────▶│   MCP Server     │
+│  (connectors/)  │     │  (pipeline/)      │     │                     │     │  (mcp_server/)   │
+│                 │     │                   │     │                     │     │                  │
+│ Confluence      │     │ Chunking          │     │ Semantic search     │     │ ask_el_paso()    │
+│ GitHub docs     │     │ Embedding (Ollama)│     │ Hybrid search (RRF) │     │ search_code()    │
+│ GitHub code     │     │ Qdrant storage    │     │ Keyword search      │     │ search_docs()    │
+│                 │     │ Fingerprinting    │     │ LLM synthesis       │     │ search_issues()  │
+│                 │     │                   │     │ Source attribution   │     │ search_el_paso() │
+└─────────────────┘     └──────────────────┘     └─────────────────────┘     └──────────────────┘
 ```
 
 ## Tech Stack
 
-- **Python 3.11+**
-- **Ollama** with Qwen3 8B for LLM inference
+- **Python 3.10+**
+- **Ollama** with Qwen3 8B for LLM inference and nomic-embed-text for embeddings
 - **Qdrant** (Docker) for vector storage
-- **LlamaIndex** for RAG orchestration
-- **Tree-sitter** for C#/Java/TypeScript/Python code parsing
+- **LlamaIndex** for text chunking
+- **Tree-sitter** for C# code parsing
 - **Python MCP SDK** for the MCP server
 
-## Quick Start
+---
+
+## Setup for Knuckleheads (Eric, this means you)
+
+Read every step. Do them in order. Do not skip steps. Do not freestyle.
+
+### Step 1: Install the prerequisites
+
+You need these things installed on your machine BEFORE you touch this repo:
+
+| Thing | Why you need it | How to get it |
+|-------|----------------|---------------|
+| **Python 3.10+** | Runs everything | `sudo apt install python3 python3-venv python3-pip` (Ubuntu/WSL) |
+| **Docker** | Runs the Qdrant vector database | [Install Docker](https://docs.docker.com/get-docker/) — on WSL2, install Docker Desktop on Windows |
+| **Ollama** | Runs the AI models locally | `curl -fsSL https://ollama.ai/install.sh \| sh` |
+| **Git** | Clone the repo | You probably have this already |
+
+**How to check you have them:**
+```bash
+python3 --version    # Should say 3.10 or higher
+docker --version     # Should say Docker version 2x.x.x
+ollama --version     # Should say ollama version 0.x.x
+```
+
+If any of those commands fail, stop and install the missing thing. Do not proceed.
+
+### Step 2: Clone the repo
 
 ```bash
-# Start infrastructure
-docker compose up -d          # Qdrant
-ollama run qwen3              # LLM
+git clone <repo-url>
+cd elpaso
+```
 
-# Install dependencies
+### Step 3: Start Docker
+
+Docker needs to be running. If you're on WSL2, open Docker Desktop on Windows and wait for it to say "Running."
+
+**How to check:**
+```bash
+docker ps
+```
+
+If you get "Cannot connect to the Docker daemon" — Docker is not running. Start it. Wait. Try again.
+
+### Step 4: Start Qdrant
+
+```bash
+docker compose up -d
+```
+
+**How to check it worked:**
+```bash
+curl http://localhost:6333/healthz
+```
+
+Should print `ok` or similar. If it says "connection refused," Qdrant didn't start. Run `docker compose logs` to see what went wrong.
+
+### Step 5: Pull the AI models with Ollama
+
+You need two models. This will download several GB. Get a coffee.
+
+```bash
+ollama pull nomic-embed-text    # Embedding model (~275MB)
+ollama pull qwen3:8b            # LLM model (~4.9GB)
+```
+
+**How to check they're there:**
+```bash
+ollama list
+```
+
+You should see both `nomic-embed-text` and `qwen3:8b` in the list.
+
+### Step 6: Create the Python virtual environment
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+```
 
-# Validate the stack
+**IMPORTANT:** Every time you open a new terminal to work on this project, you need to run:
+```bash
+source .venv/bin/activate
+```
+
+If your terminal prompt doesn't start with `(.venv)`, you forgot. Go back and do it.
+
+### Step 7: Set up your environment variables
+
+```bash
+cp .env.example .env
+```
+
+Now open `.env` in a text editor and fill in your actual credentials:
+
+```
+# Confluence — get the API token from https://id.atlassian.com/manage-profile/security/api-tokens
+CONFLUENCE_URL=https://pingis.atlassian.net/wiki
+CONFLUENCE_USERNAME=your-actual-email@ping.com
+CONFLUENCE_API_TOKEN=your-actual-token
+
+# GitHub — create a token at https://github.com/settings/tokens (needs repo scope)
+GITHUB_TOKEN=ghp_your-actual-token-here
+GITHUB_ORG=pinggolf
+
+# These are fine as-is for local dev
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
+**Do not commit your `.env` file.** It's in `.gitignore` for a reason.
+
+### Step 8: Run the smoke test
+
+This checks that Ollama, Qdrant, and embeddings all work together:
+
+```bash
 python smoke_test.py
 ```
 
-## Ingestion
+**You need to see "all steps passed."** If any step fails:
+- `Ollama health check FAIL` → Ollama isn't running. Run `ollama serve` in another terminal.
+- `Qdrant health check FAIL` → Docker/Qdrant isn't running. Go back to Step 4.
+- `Embedding test FAIL` → You didn't pull the models. Go back to Step 5.
+
+### Step 9: Ingest the data
+
+This fetches everything from Confluence and GitHub, chunks it, embeds it, and stores it in Qdrant. It takes about 30–40 minutes the first time.
 
 ```bash
-python scripts/ingest_confluence.py     # Confluence pages
-python scripts/ingest_github_docs.py    # GitHub READMEs, issues, PRs
-python scripts/ingest_github_code.py    # GitHub source code (Tree-sitter)
-python scripts/rebuild_collection.py   # Drop & re-ingest all sources
+python scripts/ingest_all.py
 ```
 
-## MCP Server
+Or if you want to run just one source:
+```bash
+python scripts/ingest_all.py --source confluence
+python scripts/ingest_all.py --source github_docs
+python scripts/ingest_all.py --source github_code
+```
+
+**If you see "Collection `el_paso` doesn't exist" errors** — this is the old version. Pull the latest code. The new version creates the collection automatically.
+
+**If GitHub code ingestion fails with 502 errors** — GitHub's API is being flaky. Just run it again:
+```bash
+python scripts/ingest_all.py --source github_code
+```
+
+It picks up where it left off. Already-ingested files get skipped.
+
+### Step 10: Connect to Claude Code
+
+Add this to your Claude Code project (it may already be in `.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "el-paso": {
+      "command": "/absolute/path/to/elpaso/.venv/bin/python",
+      "args": ["mcp_server/server.py"],
+      "cwd": "/absolute/path/to/elpaso"
+    }
+  }
+}
+```
+
+Replace `/absolute/path/to/elpaso` with the actual path on your machine.
+
+Then in Claude Code, run `/mcp` and verify `el-paso` is connected.
+
+### You're done
+
+Ask Claude anything about Ping's MES systems. It will use El Paso automatically.
+
+---
+
+## Setup for Non-Knuckleheads
 
 ```bash
-python mcp_server/server.py
+docker compose up -d
+ollama pull nomic-embed-text && ollama pull qwen3:8b
+python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+cp .env.example .env   # fill in credentials
+python smoke_test.py
+python scripts/ingest_all.py
 ```
 
-Exposes `ask_el_paso(question, scope?)` to any MCP-compatible AI host (Claude, Cursor, etc.). Every answer includes source citations.
+---
 
-## Roadmap
+## MCP Tools
 
-See [`docs/ElPaso_Roadmap.md`](docs/ElPaso_Roadmap.md) for the full roadmap. Phases 0–4 complete, currently in **Phase 5**.
+| Tool | What it does |
+|------|-------------|
+| `ask_el_paso(question, scope?, repo?, space?)` | Synthesized answer with source citations (uses local Qwen3 8B) |
+| `search_el_paso(query, scope?, repo?, space?, top_k?, mode?)` | Raw ranked chunks — let the consuming AI synthesize |
+| `search_code(query, repo?, top_k?, mode?)` | Search C# source code (hybrid search by default) |
+| `search_docs(query, space?, top_k?, mode?)` | Search Confluence + GitHub markdown docs |
+| `search_issues(query, repo?, top_k?, mode?)` | Search GitHub issues and merged PRs |
 
-| Phase | Title |
-|-------|-------|
-| 0 | Foundation & Infrastructure |
-| 1 | Confluence Ingestion |
-| 2 | GitHub Docs & Issues |
-| 3 | GitHub Source Code (Tree-sitter) |
-| 4 | MCP Server / Intelligent Q&A |
-| 5 | Hardening & Optimization |
+**Scopes:** `all`, `code`, `docs`, `issues`, `confluence`
+
+**Search modes:** `semantic` (vector similarity), `keyword` (text/identifier match), `hybrid` (both combined via RRF — default for code)
 
 ## Configuration
 
-Copy `.env.example` to `.env` and fill in your API credentials for Confluence and GitHub. See `config.yaml` for additional settings.
+- `config.yaml` — model names, chunking params, retrieval settings, search mode defaults
+- `.env` — API credentials (never commit this)
 
 ## Testing
 
@@ -81,6 +244,10 @@ pytest                        # All tests
 pytest tests/test_foo.py      # Single file
 pytest -k "test_name"         # By name
 ```
+
+## Roadmap
+
+See [`docs/ElPaso_Roadmap.md`](docs/ElPaso_Roadmap.md).
 
 ## License
 

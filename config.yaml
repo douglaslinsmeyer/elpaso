@@ -29,3 +29,8 @@ chunking:
 
 retrieval:
   top_k: 8
+
+search:
+  default_mode: semantic
+  code_default_mode: hybrid
+  rrf_k: 60

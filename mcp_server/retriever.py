@@ -16,7 +16,9 @@ logger = get_logger("el_paso.retriever")
 
 SCOPE_MAP = {
     "code": ["github_code"],
-    "docs": ["confluence", "github_docs", "github_issue", "github_pr"],
+    "docs": ["confluence", "github_docs"],
+    "issues": ["github_issue", "github_pr"],
+    "confluence": ["confluence"],
     "all": None,
 }
 
@@ -50,12 +52,12 @@ class Retriever:
 
     def __init__(self, config_path: str = "config.yaml"):
         with open(config_path) as f:
-            config = yaml.safe_load(f)
+            self.config = yaml.safe_load(f)
 
-        embed_model = config["embedding"]["model"]
-        llm_model = config["llm"]["model"]
-        collection_name = config["qdrant"]["collection_name"]
-        self.top_k = config["retrieval"]["top_k"]
+        embed_model = self.config["embedding"]["model"]
+        llm_model = self.config["llm"]["model"]
+        collection_name = self.config["qdrant"]["collection_name"]
+        self.top_k = self.config["retrieval"]["top_k"]
         self.llm_model = llm_model
 
         ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -85,34 +87,82 @@ class Retriever:
         resp.raise_for_status()
         return resp.json().get("message", {}).get("content", "")
 
+    def _resolve_mode(self, mode: str | None, scope: str) -> str:
+        """Determine search mode based on explicit mode, scope, and config defaults."""
+        if mode:
+            return mode
+        search_config = self.config.get("search", {})
+        if scope == "code":
+            return search_config.get("code_default_mode", "hybrid")
+        return search_config.get("default_mode", "semantic")
+
+    def search(
+        self,
+        question: str,
+        scope: str = "all",
+        repo: str = "",
+        space: str = "",
+        top_k: int | None = None,
+        mode: str | None = None,
+    ) -> list[dict]:
+        """Embed question, search Qdrant, dedup, return ranked chunks with scores and metadata.
+
+        Args:
+            mode: "semantic" (vector only), "keyword" (text match), or "hybrid" (RRF merge).
+                  Default: "hybrid" for code scope, "semantic" for others (configurable in config.yaml).
+        """
+        effective_top_k = top_k or self.top_k
+        effective_mode = self._resolve_mode(mode, scope)
+        source_types = SCOPE_MAP.get(scope, None)
+        rrf_k = self.config.get("search", {}).get("rrf_k", 60)
+
+        query_vector = self.embedder.embed(question)
+
+        if effective_mode == "keyword":
+            raw_chunks = self.store.keyword_search(
+                question,
+                top_k=effective_top_k + 4,
+                source_types=source_types,
+                repo_name=repo,
+                space_key=space,
+            )
+        elif effective_mode == "hybrid":
+            raw_chunks = self.store.hybrid_search(
+                query_vector, question,
+                top_k=effective_top_k + 4,
+                rrf_k=rrf_k,
+                source_types=source_types,
+                repo_name=repo,
+                space_key=space,
+            )
+        else:  # semantic (default)
+            raw_chunks = self.store.search(
+                query_vector,
+                top_k=effective_top_k + 4,
+                source_types=source_types,
+                repo_name=repo,
+                space_key=space,
+            )
+
+        chunks = _deduplicate_chunks(raw_chunks)[:effective_top_k]
+
+        log_with_data(
+            logger, logging.INFO, "Search executed",
+            question=question, scope=scope, repo=repo, space=space,
+            mode=effective_mode, raw_results=len(raw_chunks), deduped_results=len(chunks),
+        )
+
+        return chunks
+
     def ask(self, question: str, scope: str = "all", repo: str = "", space: str = "") -> str:
         """Full pipeline: embed → search → deduplicate → synthesize → return answer."""
         start = time.time()
-        source_types = SCOPE_MAP.get(scope, None)
 
-        # Retrieve relevant chunks (fetch extra to account for dedup)
-        query_vector = self.embedder.embed(question)
-        raw_chunks = self.store.search(
-            query_vector,
-            top_k=self.top_k + 4,
-            source_types=source_types,
-            repo_name=repo,
-            space_key=space,
-        )
-
-        # Deduplicate and trim to top_k
-        chunks = _deduplicate_chunks(raw_chunks)[:self.top_k]
-
-        log_with_data(
-            logger, logging.INFO, "Query executed",
-            question=question, scope=scope, repo=repo, space=space,
-            raw_results=len(raw_chunks), deduped_results=len(chunks),
-        )
+        chunks = self.search(question, scope=scope, repo=repo, space=space)
 
         if not chunks:
             return "No relevant information found in the knowledge base."
 
-        # Synthesize answer
         user_prompt = build_synthesis_prompt(question, chunks)
         answer = self._call_llm(SYSTEM_PROMPT, user_prompt)
 

@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from connectors.github_code import GitHubCodeConnector
 from pipeline.code_chunker import chunk_code
 from pipeline.embedder import Embedder
+from pipeline.fingerprint import content_fingerprint
 from pipeline.ingestion_tracker import IngestionTracker
 from pipeline.logger import get_logger, log_with_data
 from pipeline.store import VectorStore
@@ -20,37 +21,21 @@ from pipeline.store import VectorStore
 logger = get_logger("el_paso.ingest.github_code")
 
 
-def main():
-    load_dotenv()
-    start = time.time()
-
-    with open("config.yaml") as f:
-        config = yaml.safe_load(f)
-
+def run_github_code_ingestion(config: dict, tracker: IngestionTracker, embedder: Embedder, store: VectorStore) -> dict:
+    """Run GitHub code ingestion. Returns stats dict with files, chunks, skipped, errors."""
     github_token = os.environ.get("GITHUB_TOKEN")
     github_org = os.environ.get("GITHUB_ORG")
     if not all([github_token, github_org]):
-        logger.error("Set GITHUB_TOKEN and GITHUB_ORG in .env")
-        sys.exit(1)
+        raise RuntimeError("Set GITHUB_TOKEN and GITHUB_ORG in .env")
 
     repo_prefix = config.get("github", {}).get("repo_prefix", "")
     extensions = config.get("github", {}).get("code_extensions", [".cs"])
     skip_patterns = config.get("github", {}).get("skip_patterns", [])
     chunk_size = config.get("chunking", {}).get("chunk_size", 512)
-    embed_model = config["embedding"]["model"]
-    collection_name = config["qdrant"]["collection_name"]
-    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-    qdrant_host = os.environ.get("QDRANT_HOST", "localhost")
-    qdrant_port = int(os.environ.get("QDRANT_PORT", "6333"))
 
     connector = GitHubCodeConnector(
         github_token, github_org, repo_prefix, extensions, skip_patterns
     )
-    embedder = Embedder(model=embed_model, ollama_url=ollama_url)
-    store = VectorStore(collection_name=collection_name, host=qdrant_host, port=qdrant_port)
-    tracker = IngestionTracker()
-
-    store.ensure_collection(vector_size=embedder.vector_size())
 
     logger.info("Fetching source files from GitHub...")
     files = connector.fetch_code()
@@ -64,7 +49,7 @@ def main():
     for code_file in files:
         file_id = f"{code_file.repo_name}/{code_file.file_path}"
         current_ids.add(file_id)
-        fingerprint = str(hash(code_file.content))
+        fingerprint = content_fingerprint(code_file.content)
 
         if not tracker.has_changed("github_code", file_id, fingerprint):
             skipped += 1
@@ -119,14 +104,37 @@ def main():
             store.delete_by_filter(source_type="github_code", repo_name=parts[0], file_path=parts[1])
         tracker.remove("github_code", old_id)
 
+    return {"files": len(files), "chunks": total_chunks, "skipped": skipped, "errors": errors}
+
+
+def main():
+    load_dotenv()
+    start = time.time()
+
+    with open("config.yaml") as f:
+        config = yaml.safe_load(f)
+
+    embed_model = config["embedding"]["model"]
+    collection_name = config["qdrant"]["collection_name"]
+    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+    qdrant_host = os.environ.get("QDRANT_HOST", "localhost")
+    qdrant_port = int(os.environ.get("QDRANT_PORT", "6333"))
+
+    embedder = Embedder(model=embed_model, ollama_url=ollama_url)
+    store = VectorStore(collection_name=collection_name, host=qdrant_host, port=qdrant_port)
+    tracker = IngestionTracker()
+
+    store.ensure_collection(vector_size=embedder.vector_size())
+
+    stats = run_github_code_ingestion(config, tracker, embedder, store)
+
     tracker.save()
     elapsed = time.time() - start
 
     log_with_data(
         logger, logging.INFO,
-        f"Done: {len(files)} files → {total_chunks} ingested, {skipped} skipped, {errors} errors ({elapsed:.1f}s)",
-        source="github_code", files=len(files), chunks=total_chunks,
-        skipped=skipped, errors=errors, elapsed_seconds=round(elapsed, 1),
+        f"Done: {stats['files']} files → {stats['chunks']} ingested, {stats['skipped']} skipped, {stats['errors']} errors ({elapsed:.1f}s)",
+        source="github_code", **stats, elapsed_seconds=round(elapsed, 1),
     )
 
     try:

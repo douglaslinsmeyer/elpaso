@@ -2,6 +2,7 @@
 
 import base64
 import fnmatch
+import time
 from dataclasses import dataclass
 
 from github import Github, GithubException
@@ -74,6 +75,17 @@ class GitHubCodeConnector:
                 return lang
         return "unknown"
 
+    def _fetch_blob_with_retry(self, repo, sha: str, max_retries: int = 3):
+        """Fetch a git blob with exponential backoff on transient errors."""
+        for attempt in range(max_retries):
+            try:
+                return repo.get_git_blob(sha)
+            except Exception:
+                if attempt == max_retries - 1:
+                    return None
+                time.sleep(2 ** attempt)
+        return None
+
     def _walk_tree(self, repo) -> list[GitHubCodeFile]:
         """Recursively walk repo tree and collect matching source files."""
         files: list[GitHubCodeFile] = []
@@ -96,7 +108,9 @@ class GitHubCodeConnector:
                 continue
 
             try:
-                blob = repo.get_git_blob(item.sha)
+                blob = self._fetch_blob_with_retry(repo, item.sha)
+                if blob is None:
+                    continue
                 if blob.encoding == "base64":
                     content = base64.b64decode(blob.content).decode("utf-8", errors="replace")
                 else:
@@ -110,7 +124,7 @@ class GitHubCodeConnector:
                         content=content,
                         language=self._get_language(item.path),
                     ))
-            except GithubException:
+            except Exception:
                 continue
 
         return files

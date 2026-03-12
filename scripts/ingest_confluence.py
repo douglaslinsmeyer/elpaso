@@ -20,35 +20,19 @@ from pipeline.store import VectorStore
 logger = get_logger("el_paso.ingest.confluence")
 
 
-def main():
-    load_dotenv()
-    start = time.time()
-
-    with open("config.yaml") as f:
-        config = yaml.safe_load(f)
-
+def run_confluence_ingestion(config: dict, tracker: IngestionTracker, embedder: Embedder, store: VectorStore) -> dict:
+    """Run Confluence ingestion. Returns stats dict with pages, chunks, skipped, errors."""
     confluence_url = os.environ.get("CONFLUENCE_URL")
     confluence_user = os.environ.get("CONFLUENCE_USERNAME")
     confluence_token = os.environ.get("CONFLUENCE_API_TOKEN")
     if not all([confluence_url, confluence_user, confluence_token]):
-        logger.error("Set CONFLUENCE_URL, CONFLUENCE_USERNAME, CONFLUENCE_API_TOKEN in .env")
-        sys.exit(1)
+        raise RuntimeError("Set CONFLUENCE_URL, CONFLUENCE_USERNAME, CONFLUENCE_API_TOKEN in .env")
 
     spaces = config.get("confluence", {}).get("spaces", [])
     chunk_size = config.get("chunking", {}).get("chunk_size", 512)
     chunk_overlap = config.get("chunking", {}).get("chunk_overlap", 50)
-    embed_model = config["embedding"]["model"]
-    collection_name = config["qdrant"]["collection_name"]
-    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-    qdrant_host = os.environ.get("QDRANT_HOST", "localhost")
-    qdrant_port = int(os.environ.get("QDRANT_PORT", "6333"))
 
     connector = ConfluenceConnector(confluence_url, confluence_user, confluence_token)
-    embedder = Embedder(model=embed_model, ollama_url=ollama_url)
-    store = VectorStore(collection_name=collection_name, host=qdrant_host, port=qdrant_port)
-    tracker = IngestionTracker()
-
-    store.ensure_collection(vector_size=embedder.vector_size())
 
     total_pages = 0
     total_chunks = 0
@@ -70,7 +54,6 @@ def main():
                 continue
 
             try:
-                # Remove old chunks for this page before re-ingesting
                 store.delete_by_filter(source_type="confluence", page_id=page.page_id)
 
                 chunks = chunk_text(page.body_text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
@@ -106,20 +89,42 @@ def main():
                 errors += 1
                 logger.error(f"  [{page.title}] → ERROR: {e}")
 
-        # Remove tracking for deleted pages
         tracked_ids = tracker.get_all_keys("confluence")
         for old_id in tracked_ids - current_ids:
             store.delete_by_filter(source_type="confluence", page_id=old_id)
             tracker.remove("confluence", old_id)
+
+    return {"pages": total_pages, "chunks": total_chunks, "skipped": skipped, "errors": errors}
+
+
+def main():
+    load_dotenv()
+    start = time.time()
+
+    with open("config.yaml") as f:
+        config = yaml.safe_load(f)
+
+    embed_model = config["embedding"]["model"]
+    collection_name = config["qdrant"]["collection_name"]
+    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+    qdrant_host = os.environ.get("QDRANT_HOST", "localhost")
+    qdrant_port = int(os.environ.get("QDRANT_PORT", "6333"))
+
+    embedder = Embedder(model=embed_model, ollama_url=ollama_url)
+    store = VectorStore(collection_name=collection_name, host=qdrant_host, port=qdrant_port)
+    tracker = IngestionTracker()
+
+    store.ensure_collection(vector_size=embedder.vector_size())
+
+    stats = run_confluence_ingestion(config, tracker, embedder, store)
 
     tracker.save()
     elapsed = time.time() - start
 
     log_with_data(
         logger, logging.INFO,
-        f"Done: {total_pages} pages → {total_chunks} ingested, {skipped} skipped, {errors} errors ({elapsed:.1f}s)",
-        source="confluence", pages=total_pages, chunks=total_chunks,
-        skipped=skipped, errors=errors, elapsed_seconds=round(elapsed, 1),
+        f"Done: {stats['pages']} pages → {stats['chunks']} ingested, {stats['skipped']} skipped, {stats['errors']} errors ({elapsed:.1f}s)",
+        source="confluence", **stats, elapsed_seconds=round(elapsed, 1),
     )
 
     try:
