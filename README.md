@@ -1,28 +1,27 @@
 # El Paso
 
-A locally-hosted RAG (Retrieval-Augmented Generation) system that ingests organizational knowledge from Confluence and GitHub, then exposes it via an [MCP](https://modelcontextprotocol.io/) server for AI-powered Q&A with source attribution.
+A retrieval-as-a-service system that ingests organizational knowledge from Confluence and GitHub, then exposes it via [MCP](https://modelcontextprotocol.io/) tools for any AI agent to search with source attribution.
 
-Built for a manufacturing-focused microservices environment (C#/.NET, RabbitMQ, PostgreSQL, Blazor). The RAG system itself is Python.
+Built for a manufacturing-focused microservices environment (C#/.NET, RabbitMQ, PostgreSQL, Blazor). The retrieval system itself is Python. Consuming agents (Claude, Cursor, etc.) bring their own LLM — El Paso handles the search.
 
 ## Architecture
 
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────┐     ┌──────────────────┐
-│  Ingestion Layer│────▶│ Processing Layer  │────▶│ Retrieval & Synth.  │────▶│   MCP Server     │
+│  Ingestion Layer│────▶│ Processing Layer  │────▶│   Retrieval Layer   │────▶│   MCP Server     │
 │  (connectors/)  │     │  (pipeline/)      │     │                     │     │  (mcp_server/)   │
 │                 │     │                   │     │                     │     │                  │
-│ Confluence      │     │ Chunking          │     │ Semantic search     │     │ ask_el_paso()    │
-│ GitHub docs     │     │ Embedding (Ollama)│     │ Hybrid search (RRF) │     │ search_code()    │
-│ GitHub code     │     │ Qdrant storage    │     │ Keyword search      │     │ search_docs()    │
-│                 │     │ Fingerprinting    │     │ LLM synthesis       │     │ search_issues()  │
-│                 │     │                   │     │ Source attribution   │     │ search_el_paso() │
+│ Confluence      │     │ Chunking          │     │ Semantic search     │     │ search_code()    │
+│ GitHub docs     │     │ Embedding (Ollama)│     │ Hybrid search (RRF) │     │ search_docs()    │
+│ GitHub code     │     │ Qdrant storage    │     │ Keyword search      │     │ search_issues()  │
+│                 │     │ Fingerprinting    │     │ Dedup & ranking     │     │ search_el_paso() │
 └─────────────────┘     └──────────────────┘     └─────────────────────┘     └──────────────────┘
 ```
 
 ## Tech Stack
 
 - **Python 3.10+**
-- **Ollama** with Qwen3 8B for LLM inference and nomic-embed-text for embeddings
+- **Ollama** with nomic-embed-text for embeddings
 - **Qdrant** (Docker) for vector storage
 - **LlamaIndex** for text chunking
 - **Tree-sitter** for C# code parsing
@@ -42,7 +41,7 @@ You need these things installed on your machine BEFORE you touch this repo:
 |-------|----------------|---------------|
 | **Python 3.10+** | Runs everything | `sudo apt install python3 python3-venv python3-pip` (Ubuntu/WSL) |
 | **Docker** | Runs the Qdrant vector database | [Install Docker](https://docs.docker.com/get-docker/) — on WSL2, install Docker Desktop on Windows |
-| **Ollama** | Runs the AI models locally | `curl -fsSL https://ollama.ai/install.sh \| sh` |
+| **Ollama** | Runs the embedding model locally | `curl -fsSL https://ollama.ai/install.sh \| sh` |
 | **Git** | Clone the repo | You probably have this already |
 
 **How to check you have them:**
@@ -85,21 +84,18 @@ curl http://localhost:6333/healthz
 
 Should print `ok` or similar. If it says "connection refused," Qdrant didn't start. Run `docker compose logs` to see what went wrong.
 
-### Step 5: Pull the AI models with Ollama
-
-You need two models. This will download several GB. Get a coffee.
+### Step 5: Pull the embedding model with Ollama
 
 ```bash
 ollama pull nomic-embed-text    # Embedding model (~275MB)
-ollama pull qwen3:8b            # LLM model (~4.9GB)
 ```
 
-**How to check they're there:**
+**How to check it's there:**
 ```bash
 ollama list
 ```
 
-You should see both `nomic-embed-text` and `qwen3:8b` in the list.
+You should see `nomic-embed-text` in the list.
 
 ### Step 6: Create the Python virtual environment
 
@@ -209,7 +205,7 @@ Ask Claude anything about Ping's MES systems. It will use El Paso automatically.
 
 ```bash
 docker compose up -d
-ollama pull nomic-embed-text && ollama pull qwen3:8b
+ollama pull nomic-embed-text
 python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 cp .env.example .env   # fill in credentials
 python smoke_test.py
@@ -222,8 +218,7 @@ python scripts/ingest_all.py
 
 | Tool | What it does |
 |------|-------------|
-| `ask_el_paso(question, scope?, repo?, space?)` | Synthesized answer with source citations (uses local Qwen3 8B) |
-| `search_el_paso(query, scope?, repo?, space?, top_k?, mode?)` | Raw ranked chunks — let the consuming AI synthesize |
+| `search_el_paso(query, scope?, repo?, space?, top_k?, mode?)` | Raw ranked chunks with scores and metadata |
 | `search_code(query, repo?, top_k?, mode?)` | Search C# source code (hybrid search by default) |
 | `search_docs(query, space?, top_k?, mode?)` | Search Confluence + GitHub markdown docs |
 | `search_issues(query, repo?, top_k?, mode?)` | Search GitHub issues and merged PRs |
