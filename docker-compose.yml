@@ -25,6 +25,11 @@ services:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - ./mcp_server:/app/mcp_server
+      - ./pipeline:/app/pipeline
+      - ./config.yaml:/app/config.yaml
+    command: ["watchmedo", "auto-restart", "--directory=/app/mcp_server", "--directory=/app/pipeline", "--pattern=*.py;*.yaml", "--recursive", "--", "python", "mcp_server/server.py"]
     depends_on:
       - qdrant
     restart: unless-stopped
@@ -43,7 +48,5 @@ services:
       - MCP_SERVER_URL=http://elpaso:8080/mcp
     depends_on:
       - elpaso
-    profiles:
-      - dev
     restart: unless-stopped
 
