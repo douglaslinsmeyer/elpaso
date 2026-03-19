@@ -47,20 +47,3 @@ services:
       - dev
     restart: unless-stopped
 
-  caddy:
-    image: caddy:2-alpine
-    ports:
-      - "443:443"
-      - "8080:8080"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./certs:/certs:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - elpaso
-    restart: unless-stopped
-
-volumes:
-  caddy_data:
-  caddy_config:
