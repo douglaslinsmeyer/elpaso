@@ -34,3 +34,8 @@ search:
   default_mode: semantic
   code_default_mode: hybrid
   rrf_k: 60
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  transport: stdio

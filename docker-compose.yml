@@ -7,3 +7,60 @@ services:
     volumes:
       - ./qdrant_storage:/qdrant/storage
     restart: unless-stopped
+
+  elpaso:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:8080"
+    expose:
+      - "8080"
+    env_file:
+      - .env
+    environment:
+      - MCP_TRANSPORT=streamable-http
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+  inspector:
+    # MCP Inspector for testing El Paso tools.
+    # Connect in the UI with: Transport=Streamable HTTP, URL=http://elpaso:8080/mcp
+    image: ghcr.io/modelcontextprotocol/inspector:latest
+    ports:
+      - "6274:6274"
+      - "6277:6277"
+    environment:
+      - HOST=0.0.0.0
+      - MCP_AUTO_OPEN_ENABLED=false
+      - DANGEROUSLY_OMIT_AUTH=true
+      - MCP_SERVER_URL=http://elpaso:8080/mcp
+    depends_on:
+      - elpaso
+    profiles:
+      - dev
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - elpaso
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -177,7 +177,23 @@ It picks up where it left off. Already-ingested files get skipped.
 
 ### Step 10: Connect to Claude Code
 
-Add this to your Claude Code project (it may already be in `.mcp.json`):
+**Option A: Shared HTTP server (recommended)**
+
+If El Paso is running via Docker Compose (`docker compose up -d`), connect over HTTP:
+
+```json
+{
+  "mcpServers": {
+    "el-paso": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
+```
+
+**Option B: Local subprocess (stdio)**
+
+If you prefer to run El Paso as a local subprocess:
 
 ```json
 {
@@ -204,12 +220,13 @@ Ask Claude anything about Ping's MES systems. It will use El Paso automatically.
 ## Setup for Non-Knuckleheads
 
 ```bash
-docker compose up -d
+docker compose up -d qdrant
 ollama pull nomic-embed-text
 python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 cp .env.example .env   # fill in credentials
 python smoke_test.py
 python scripts/ingest_all.py
+docker compose up -d   # starts Qdrant + El Paso MCP server on port 8080
 ```
 
 ---

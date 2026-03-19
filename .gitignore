@@ -22,5 +22,8 @@ build/
 ingestion_state.json
 logs/
 
+# TLS certs
+certs/
+
 # OS
 .DS_Store

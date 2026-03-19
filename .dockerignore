@@ -1,0 +1,16 @@
+.git
+.venv
+venv
+qdrant_storage
+logs
+__pycache__
+*.pyc
+.env
+tests
+docs
+connectors
+scripts
+smoke_test.py
+ingestion_state.json
+certs
+.DS_Store

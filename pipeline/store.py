@@ -103,7 +103,14 @@ class VectorStore:
             ),
         )
         # Keyword indexes for code metadata filtering
-        for field in ("class_name", "method_name", "namespace", "file_path"):
+        for field in ("class_name", "method_name", "namespace", "file_path", "implements_interfaces", "repo_name"):
+            self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name=field,
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+        # Keyword indexes for community context management
+        for field in ("identifier", "tags"):
             self.client.create_payload_index(
                 collection_name=self.collection_name,
                 field_name=field,
@@ -277,6 +284,21 @@ class VectorStore:
         )
 
         return reciprocal_rank_fusion(semantic_results, keyword_results, top_k=top_k, rrf_k=rrf_k)
+
+    def scroll_by_filter(self, limit: int = 100, **field_matches) -> list[dict]:
+        """Scroll through points matching filter criteria. Returns payloads."""
+        conditions = [
+            FieldCondition(key=k, match=MatchValue(value=v))
+            for k, v in field_matches.items()
+        ]
+        scroll_filter = Filter(must=conditions) if conditions else None
+        points, _ = self.client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=scroll_filter,
+            limit=limit,
+            with_payload=True,
+        )
+        return [point.payload for point in points]
 
     def collection_info(self) -> dict:
         """Return collection point count and status."""
